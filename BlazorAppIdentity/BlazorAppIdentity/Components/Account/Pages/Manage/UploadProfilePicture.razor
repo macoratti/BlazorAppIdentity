@@ -1,0 +1,47 @@
+﻿@using BlazorAppIdentity.Data
+@using Microsoft.AspNetCore.Identity
+
+@rendermode RenderMode.InteractiveServer
+
+@inject IServiceProvider ServiceProvider
+
+<div class="form-floating">
+    <label asp-for="User.ProfilePicture" style="width: 100%;"></label>
+    @if (User?.ProfilePicture?.Length > 0)
+    {
+        <img id="profilePicture" style="width:120px;height:120px; object-fit:cover"
+             src="data:image/*;base64,@(Convert.ToBase64String(User.ProfilePicture))">
+    }
+    else
+    {
+        <InputFile OnChange="LoadFiles" />
+    }
+    <span asp-validation-for="User.ProfilePicture" class="text-danger"></span>
+</div>
+
+@code {
+    [Parameter]
+    public ApplicationUser User { get; set; } = default!;
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = default!;
+
+    private async Task LoadFiles(InputFileChangeEventArgs e)
+    {
+        MemoryStream ms = new MemoryStream();
+        await e.File.OpenReadStream().CopyToAsync(ms);
+        var bytes = ms.ToArray();
+
+        await using var scope = ServiceProvider.CreateAsyncScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+        // Reload the ApplicationUser so we can make modifications to it in the new scope.
+        var principal = (await AuthenticationState).User;
+        User = await userManager.GetUserAsync(principal) ??
+                                 throw new Exception("Could not reload user!");
+
+        User.ProfilePicture = bytes;
+
+        await userManager.UpdateAsync(User);
+    }
+}

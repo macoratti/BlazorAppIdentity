@@ -1,0 +1,130 @@
+﻿@page "/Account/Manage"
+
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using BlazorAppIdentity.Data
+
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IdentityUserAccessor UserAccessor
+@inject IdentityRedirectManager RedirectManager
+
+<PageTitle>Profile</PageTitle>
+
+<h3>Profile</h3>
+<StatusMessage />
+
+<div class="row">
+    <div class="col-md-6">
+        <EditForm Model="Input" FormName="profile" OnValidSubmit="OnValidSubmitAsync" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger" role="alert" />
+
+            <div class="col-md-6">
+                <div class="form-floating mb-3">
+                    <UploadProfilePicture />
+                </div>
+            </div>
+
+            <div class="form-floating mb-3">
+                <input type="text" value="@username" class="form-control" placeholder="Please choose your username." disabled />
+                <label for="username" class="form-label">Username</label>
+            </div>
+            <div class="form-floating mb-3">
+                <InputText @bind-Value="Input.PhoneNumber" class="form-control" placeholder="Please enter your phone number." />
+                <label for="phone-number" class="form-label">Phone number</label>
+                <ValidationMessage For="() => Input.PhoneNumber" class="text-danger" />
+            </div>
+
+            <div class="form-floating mb-3">
+                <img id="pictureProfile" style="width:120px;height:120px; object-fit:cover"
+                     src="@imageDataURL">
+            </div>
+
+            <button type="submit" class="w-100 btn btn-lg btn-primary">Save</button>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    private ApplicationUser user = default!;
+    private string? username;
+    private string? phoneNumber;
+    private byte[]? _profilePicture;
+
+    private string? imagesrc;
+    private string? imageDataURL;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        user = await UserAccessor.GetRequiredUserAsync(HttpContext);
+        username = await UserManager.GetUserNameAsync(user);
+        phoneNumber = await UserManager.GetPhoneNumberAsync(user);
+        _profilePicture = user.ProfilePicture;
+
+        if (_profilePicture != null)
+        {
+            imagesrc = Convert.ToBase64String(_profilePicture);
+            imageDataURL = string.Format("data:image/jpeg;base64,{0}", imagesrc);
+        }
+        else
+        {
+            _profilePicture = LoadDefaultImage("/images/semfoto.jpg");
+
+            imagesrc = Convert.ToBase64String(_profilePicture);
+            imageDataURL = string.Format("data:image/jpeg;base64,{0}", imagesrc);
+        }
+
+        Input.PhoneNumber ??= phoneNumber;
+        Input.ProfilePicture ??= _profilePicture;
+    }
+
+    private async Task OnValidSubmitAsync()
+    {
+        if (Input.PhoneNumber != phoneNumber)
+        {
+            var setPhoneResult = await UserManager.SetPhoneNumberAsync(user, Input.PhoneNumber);
+            if (!setPhoneResult.Succeeded)
+            {
+                RedirectManager.RedirectToCurrentPageWithStatus("Error: Failed to set phone number.", HttpContext);
+            }
+        }
+
+        await SignInManager.RefreshSignInAsync(user);
+        RedirectManager.RedirectToCurrentPageWithStatus("Your profile has been updated", HttpContext);
+    }
+
+    private sealed class InputModel
+    {
+        [Phone]
+        [Display(Name = "Phone number")]
+        public string? PhoneNumber { get; set; }
+        [Display(Name = "Profile Picture")]
+        public byte[]? ProfilePicture { get; set; }
+    }
+
+    private byte[] LoadDefaultImage(string defaultImagePath)
+    {
+        try
+        {
+            // Caminho relativo ao wwwroot
+            var wwwrootPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            var imagePath = wwwrootPath + defaultImagePath;
+
+            // Carregue a imagem padrão como um array de bytes
+            return File.ReadAllBytes(imagePath);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao carregar a imagem padrão: {ex.Message}");
+            return new byte[0];
+        }
+    }
+
+}
